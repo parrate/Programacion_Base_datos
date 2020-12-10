@@ -1,0 +1,144 @@
+/* *************************************************************
+        PRUEBA N°1 PROGRAMACION DE BASE DE DATOS
+        ========================================
+        
+   DESARROLLADO POR: PEDRO ARRATE MIRANDA - RODRIGO ZULOAGA
+**************************************************************** */
+
+--DESARROLLO EJERCICIO 1 DATOS PARA TABLA HABER_CALC_MES
+DROP TABLE HABER_CALC_MES;
+
+CREATE TABLE HABER_CALC_MES
+(cod_emp NUMBER(10) NOT NULL PRIMARY KEY,
+numrut_emp NUMBER(10) NOT NULL,
+ mes_proceso NUMBER(2) NOT NULL,
+ anno_proceso NUMBER(4) NOT NULL,
+ VALOR_SUELDO_BASE NUMBER(8) NOT NULL,
+ VALOR_ASIG_ANNOS NUMBER(8) NOT NULL,
+ VALOR_CARGAS_FAM    NUMBER(8),
+ VALOR_MOVILIZACION NUMBER(8) NOT NULL,
+ VALOR_COLACION NUMBER(8),
+ VALOR_COM_VENTAS NUMBER(8),
+ VALOR_ASIG_ESCOLARIDAD NUMBER(10) NOT NULL,
+ CONSTRAINT FK_HABER_CALC_VENDEDOR FOREIGN KEY(numrut_emp) REFERENCES empleado(numrut_emp));
+
+CREATE SEQUENCE SEQ_CODEMP INCREMENT BY 10 MAXVALUE 9999999999999999999999999999 MINVALUE 1000 CACHE 20 ORDER;
+
+SET SERVEROUTPUT ON;
+DECLARE
+  CURSOR c_principal IS
+    SELECT E.NUMRUT_EMP, SUELDO_BASE_EMP, FECING_EMP, COUNT(CF.NUMRUT_CARGA) CARGAS, ID_COMUNA, 
+    CASE 
+      WHEN TO_CHAR(B.FECHA_BOLETA, 'MM-YYYY') = TO_CHAR((SYSDATE-30), 'MM-YYYY') THEN NVL(SUM(CV.VALOR_COMISION),0)
+      ELSE 0
+    END CVENTAS, AE.PORC_ASIG_ESCOLARIDAD
+    FROM EMPLEADO E
+    LEFT JOIN CARGA_FAMILIAR CF ON(E.NUMRUT_EMP = CF.NUMRUT_EMP)
+    LEFT JOIN BOLETA B ON(E.NUMRUT_EMP = B.NUMRUT_EMP)
+    LEFT JOIN COMISION_VENTA CV ON(B.NRO_BOLETA = CV.NRO_BOLETA)
+    JOIN ASIG_ESCOLARIDAD AE ON(E.ID_ESCOLARIDAD = AE.ID_ESCOLARIDAD)
+    GROUP BY E.NUMRUT_EMP, SUELDO_BASE_EMP, FECING_EMP, ID_COMUNA, TO_CHAR(B.FECHA_BOLETA, 'MM-YYYY'), AE.PORC_ASIG_ESCOLARIDAD;
+  CURSOR c_mov IS
+    SELECT * FROM PORC_MOVILIZACION;
+  CURSOR c_bonocontrato IS
+    SELECT * FROM PORC_BONIF_ANNOS_CONTRATO;
+  TYPE tipo_compuesto IS RECORD (  
+    v_mes NUMBER := 12,
+    v_anno NUMBER := 2019,
+    v_colacion NUMBER := 40000,
+    v_aserv NUMBER := 0,
+    v_asifam NUMBER := 0,
+    v_cont INT := 0,
+    v_movil NUMBER := 0,
+    v_bonocont NUMBER := 0,
+    v_escol NUMBER := 0,
+    v_fecha_proceso DATE := '31/12/2019');
+  vc tipo_compuesto;    
+BEGIN
+  FOR a IN c_principal LOOP
+    vc.v_aserv :=  trunc(months_between(vc.v_fecha_proceso, a.fecing_emp)/12);
+    vc.v_escol := ROUND(a.SUELDO_BASE_EMP * (a.PORC_ASIG_ESCOLARIDAD)/100);
+    vc.v_asifam := CASE
+                  WHEN a.cargas BETWEEN 1 AND 2 THEN (a.cargas * 1500)
+                  WHEN a.cargas > 2 THEN (a.cargas * 1000)
+                  ELSE 0
+                 END;
+    
+    FOR b IN c_mov LOOP
+      IF a.SUELDO_BASE_EMP >= b.SUELDO_BASE_INF AND a.SUELDO_BASE_EMP <= b.SUELDO_BASE_SUP THEN 
+        vc.v_movil := ROUND(a.SUELDO_BASE_EMP * (b.PORC_MOV)/100);
+      END IF;      
+    END LOOP;
+    
+    vc.v_movil := CASE
+                WHEN a.ID_COMUNA IN (91, 105, 107) THEN (vc.v_movil + 30000)
+                WHEN a.ID_COMUNA IN (114, 117, 118, 119, 124, 122) THEN (vc.v_movil + 50000)
+                ELSE vc.v_movil
+               END;    
+    
+    FOR c IN c_bonocontrato LOOP
+      IF vc.v_aserv >= c.ANNOS_INFERIOR AND vc.v_aserv <= c.ANNOS_SUPERIOR THEN
+        vc.v_bonocont:= ROUND(a.SUELDO_BASE_EMP * (c.PORC_BONIF)/100);
+      ELSE vc.v_bonocont := 0;
+      END IF;      
+    END LOOP;    
+    INSERT INTO HABER_CALC_MES VALUES 
+    (SEQ_CODEMP.NEXTVAL, a.numrut_emp, vc.v_mes, vc.v_anno, a.sueldo_base_emp, vc.v_bonocont, vc.v_asifam, vc.v_movil, vc.v_colacion, a.cventas, vc.v_escol);
+    vc.v_cont := (v_cont + 1);
+  END LOOP;
+  DBMS_OUTPUT.PUT_LINE('Se han trabajado ' || vc.v_cont || ' Registros');
+END;
+
+
+--DESARROLLO EJERCICIO 2 DATOS PARA TABLA DESCUENTO_CALC_MES
+DROP TABLE AFP CASCADE CONSTRAINTS;
+
+CREATE TABLE AFP
+(cod_afp NUMBER(2) CONSTRAINT PK_AFP PRIMARY KEY,
+ nombre_afp  VARCHAR2(30) NOT NULL,
+ porc_descto_afp NUMBER(2) NOT NULL,
+ comision NUMBER NOT NULL
+ );
+
+INSERT INTO AFP VALUES(1,'CAPITAL',10,1.44);
+INSERT INTO AFP VALUES(2,'CUPRUM',12,1.44);
+INSERT INTO AFP VALUES(3,'HABITAT',14,1.27);
+INSERT INTO AFP VALUES(4,'MODELO',8,0.77);
+INSERT INTO AFP VALUES(5,'PLANVITAL',15,1.16);
+INSERT INTO AFP VALUES(6,'PROVIDA',13,1.45);
+
+CREATE TABLE DESCUENTO_CALC_MES (
+COD_EMP NUMBER(10) NOT NULL,
+NUMRUT_EMP NUMBER(10) NOT NULL,
+MES_PROCESO NUMBER(2) NOT NULL,
+ANNO_PROCESO NUMBER(4) NOT NULL,
+VALOR_SALUD NUMBER(8) NOT NULL,
+VALOR_AFP NUMBER(8) NOT NULL);
+
+SET SERVEROUTPUT ON;
+DECLARE
+  CURSOR c_haber IS
+    SELECT H.COD_EMP, H.NUMRUT_EMP, H.MES_PROCESO, H.VALOR_SUELDO_BASE, H.ANNO_PROCESO, H.VALOR_ASIG_ANNOS, H.VALOR_CARGAS_FAM, H.VALOR_COLACION,
+    H.VALOR_COM_VENTAS, H.VALOR_MOVILIZACION, H.VALOR_ASIG_ESCOLARIDAD, A.PORC_DESCTO_AFP, S.PORC_DESCTO_SALUD, A.COMISION
+      FROM HABER_CALC_MES H
+      JOIN EMPLEADO E ON(H.NUMRUT_EMP = E.NUMRUT_EMP)
+      JOIN AFP A ON(E.COD_AFP = A.COD_AFP)
+      JOIN SALUD S ON(E.COD_SALUD = S.COD_SALUD);
+  TYPE tipo_compuesto2 IS RECORD (
+    v_salud NUMBER := 0,
+    v_afp NUMBER := 0,
+    v_haberes NUMBER := 0,
+    v_conta INT := 0);
+  vc2 tipo_compuesto2;
+BEGIN
+  FOR a IN c_haber LOOP
+    vc2.v_haberes := (a.VALOR_SUELDO_BASE + a.VALOR_CARGAS_FAM + a.VALOR_MOVILIZACION + a.VALOR_COLACION + a.VALOR_ASIG_ANNOS + a.VALOR_COM_VENTAS + a.VALOR_ASIG_ESCOLARIDAD);
+    vc2.v_afp := ((vc2.v_haberes * (a.PORC_DESCTO_AFP/100)) + vc2.v_haberes * (a.COMISION/100));
+    vc2.v_salud := (vc2.v_haberes * (a.PORC_DESCTO_SALUD/100));
+    INSERT INTO DESCUENTO_CALC_MES VALUES (a.COD_EMP, a.NUMRUT_EMP, a.MES_PROCESO, a.ANNO_PROCESO, vc2.v_salud, vc2.v_afp);
+    vc2.v_conta := v_conta + 1;
+  END LOOP;
+  DBMS_OUTPUT.PUT_LINE('Se Ingresado '|| vc2.v_conta || ' Registros');
+END;
+
+COMMIT;

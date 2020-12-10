@@ -1,0 +1,13 @@
+SELECT EMPLOYEE_ID, FIRST_NAME, SALARY FROM EMPLOYEES;
+
+SET SERVEROUTPUT ON;
+DECLARE
+CURSOR v_cursor_emp IS
+SELECT EMPLOYEE_ID, FIRST_NAME, SALARY FROM EMPLOYEES;
+BEGIN
+  FOR i IN v_cursor_emp LOOP
+    IF i.employee_id > 150 THEN
+      DBMS_OUTPUT.PUT_LINE(i.employee_id || ' *** ' || i.salary || ' ' || i.first_name);
+    END IF;
+  END LOOP;
+END;
